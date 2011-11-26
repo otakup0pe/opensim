@@ -341,14 +341,37 @@ namespace OpenSim.Services.Connectors.SimianGrid
 
         public List<GridRegion> GetHyperlinks(UUID scopeID)
         {
-            // Hypergrid/linked regions are not supported
-            return new List<GridRegion>();
+            List<GridRegion> foundRegions = new List<GridRegion>();
+
+            NameValueCollection requestArgs = new NameValueCollection
+            {
+                { "RequestMethod", "GetScenes" },
+                { "HyperGrid", "true" },
+                { "Enabled", "1" }
+            };
+
+            OSDMap response = WebUtil.PostToService(m_ServerURI, requestArgs);
+            if (response["Success"].AsBoolean())
+            {
+                // m_log.DebugFormat("[SIMIAN GRID CONNECTOR] found regions with name {0}",name);
+
+                OSDArray array = response["Scenes"] as OSDArray;
+                if (array != null)
+                {
+                    for (int i = 0; i < array.Count; i++)
+                    {
+                        GridRegion region = ResponseToGridRegion(array[i] as OSDMap);
+                        if (region != null)
+                            foundRegions.Add(region);
+                    }
+                }
+            }
+
+            return foundRegions;
         }
-        
+
         public int GetRegionFlags(UUID scopeID, UUID regionID)
         {
-            const int REGION_ONLINE = 4;
-
             NameValueCollection requestArgs = new NameValueCollection
             {
                 { "RequestMethod", "GetScene" },
@@ -360,7 +383,9 @@ namespace OpenSim.Services.Connectors.SimianGrid
             OSDMap response = WebUtil.PostToService(m_ServerURI, requestArgs);
             if (response["Success"].AsBoolean())
             {
-                return response["Enabled"].AsBoolean() ? REGION_ONLINE : 0;
+                OpenSim.Data.RegionFlags enabled = response["Enabled"].AsBoolean() ? OpenSim.Data.RegionFlags.RegionOnline : 0;
+                OpenSim.Data.RegionFlags hypergrid = response["HyperGrid"].AsBoolean() ? OpenSim.Data.RegionFlags.Hyperlink : 0;
+                return (int) enabled & (int) hypergrid;
             }
             else
             {
@@ -412,23 +437,26 @@ namespace OpenSim.Services.Connectors.SimianGrid
             region.RegionLocX = (int)minPosition.X;
             region.RegionLocY = (int)minPosition.Y;
 
-            Uri httpAddress = response["Address"].AsUri();
-            region.ExternalHostName = httpAddress.Host;
-            region.HttpPort = (uint)httpAddress.Port;
-
             region.ServerURI = extraData["ServerURI"].AsString();
+            
+            
+            if ( ! response["HyperGrid"] ) {
+                Uri httpAddress = response["Address"].AsUri();
+                region.ExternalHostName = httpAddress.Host;
+                region.HttpPort = (uint)httpAddress.Port;
 
-            IPAddress internalAddress;
-            IPAddress.TryParse(extraData["InternalAddress"].AsString(), out internalAddress);
-            if (internalAddress == null)
-                internalAddress = IPAddress.Any;
+                IPAddress internalAddress;
+                IPAddress.TryParse(extraData["InternalAddress"].AsString(), out internalAddress);
+                if (internalAddress == null)
+                    internalAddress = IPAddress.Any;
 
-            region.InternalEndPoint = new IPEndPoint(internalAddress, extraData["InternalPort"].AsInteger());
-            region.TerrainImage = extraData["MapTexture"].AsUUID();
-            region.Access = (byte)extraData["Access"].AsInteger();
-            region.RegionSecret = extraData["RegionSecret"].AsString();
-            region.EstateOwner = extraData["EstateOwner"].AsUUID();
-            region.Token = extraData["Token"].AsString();
+                region.InternalEndPoint = new IPEndPoint(internalAddress, extraData["InternalPort"].AsInteger());
+                region.TerrainImage = extraData["MapTexture"].AsUUID();
+                region.Access = (byte)extraData["Access"].AsInteger();
+                region.RegionSecret = extraData["RegionSecret"].AsString();
+                region.EstateOwner = extraData["EstateOwner"].AsUUID();
+                region.Token = extraData["Token"].AsString();
+            }
 
             return region;
         }
