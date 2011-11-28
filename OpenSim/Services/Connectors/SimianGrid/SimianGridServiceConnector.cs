@@ -378,14 +378,17 @@ namespace OpenSim.Services.Connectors.SimianGrid
                 { "SceneID", regionID.ToString() }
             };
 
-            // m_log.DebugFormat("[SIMIAN GRID CONNECTOR] request region flags for {0}",regionID.ToString());
+            m_log.DebugFormat("[SIMIAN GRID CONNECTOR] request region flags for {0}",regionID.ToString());
 
             OSDMap response = WebUtil.PostToService(m_ServerURI, requestArgs);
             if (response["Success"].AsBoolean())
             {
-                OpenSim.Data.RegionFlags enabled = response["Enabled"].AsBoolean() ? OpenSim.Data.RegionFlags.RegionOnline : 0;
-                OpenSim.Data.RegionFlags hypergrid = response["HyperGrid"].AsBoolean() ? OpenSim.Data.RegionFlags.Hyperlink : 0;
-                return (int) enabled & (int) hypergrid;
+                OSDMap extraData = response["ExtraData"] as OSDMap;
+                int enabled = response["Enabled"].AsBoolean() ? (int) OpenSim.Data.RegionFlags.RegionOnline : 0;
+                int hypergrid = extraData["HyperGrid"].AsBoolean() ? (int) OpenSim.Data.RegionFlags.Hyperlink : 0;
+                int flags =  enabled | hypergrid;
+                m_log.DebugFormat("[SGGC] enabled - {0} hg - {1} flags - {2}", enabled, hypergrid, flags);
+                return flags;
             }
             else
             {
@@ -436,11 +439,8 @@ namespace OpenSim.Services.Connectors.SimianGrid
             Vector3d minPosition = response["MinPosition"].AsVector3d();
             region.RegionLocX = (int)minPosition.X;
             region.RegionLocY = (int)minPosition.Y;
-
-            region.ServerURI = extraData["ServerURI"].AsString();
             
-            
-            if ( ! response["HyperGrid"] ) {
+            if ( ! extraData["HyperGrid"] ) {
                 Uri httpAddress = response["Address"].AsUri();
                 region.ExternalHostName = httpAddress.Host;
                 region.HttpPort = (uint)httpAddress.Port;
@@ -456,6 +456,9 @@ namespace OpenSim.Services.Connectors.SimianGrid
                 region.RegionSecret = extraData["RegionSecret"].AsString();
                 region.EstateOwner = extraData["EstateOwner"].AsUUID();
                 region.Token = extraData["Token"].AsString();
+                region.ServerURI = extraData["ServerURI"].AsString();
+            } else {
+                region.ServerURI = response["Address"];
             }
 
             return region;
