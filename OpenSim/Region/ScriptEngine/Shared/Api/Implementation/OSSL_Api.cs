@@ -1573,21 +1573,20 @@ namespace OpenSim.Region.ScriptEngine.Shared.Api
         private Object osdToObject(OSD decoded)
         {
             if ( decoded is OSDString ) {
-                return (OSDString) decoded.AsString();
+                return (string) decoded.AsString();
             } else if ( decoded is OSDInteger ) {
-                return (OSDInteger) decoded.AsInteger();
+                return (int) decoded.AsInteger();
             } else if ( decoded is OSDReal ) {
-                return (OSDReal) decoded.AsReal();
+                return (float) decoded.AsReal();
             } else if ( decoded is OSDBoolean ) {
-                return decoded.AsBoolean();
+                return (bool) decoded.AsBoolean();
             } else if ( decoded is OSDMap ) {
                 return osdToHashtable((OSDMap) decoded);
             } else if ( decoded is OSDArray ) {
                 return osdToArray((OSDArray) decoded);
             } else {
-                throw new Exception("osParseJSONNew deserialized into unknown OSD type " + decoded.Type.ToString());
+                return null;
             }
-            return new List<Object>();
         }
 
         public Object osParseJSONNew(string JSON)
@@ -1603,7 +1602,7 @@ namespace OpenSim.Region.ScriptEngine.Shared.Api
             }
             catch(Exception e)
             {
-                OSSLError("osParseJSONNew: The JSON string is not valid " + JSON + " : " + e.Message) ;
+                OSSLError("osParseJSONNew: Problems decoding JSON string " + JSON + " : " + e.Message) ;
                 return null;
             }
         }
