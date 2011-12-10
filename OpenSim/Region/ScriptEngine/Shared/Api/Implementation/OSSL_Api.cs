@@ -1552,6 +1552,62 @@ namespace OpenSim.Region.ScriptEngine.Shared.Api
             return m_ScriptEngine.World.GetSimulatorVersion();
         }
 
+        private Hashtable osdToHashtable(OSDMap map)
+        {
+            Hashtable result = new Hashtable();
+            foreach (KeyValuePair<string, OSD> item in map) {
+                result.Add(item.Key, osdToObject(item.Value));
+            }
+            return result;
+        }
+        
+        private List<Object> osdToArray(OSDArray list)
+        {
+            List<Object> result = new List<Object>();
+            foreach ( OSD item in list ) {
+                result.Add(osdToObject(item));
+            }
+            return result;
+        }
+
+        private Object osdToObject(OSD decoded)
+        {
+            if ( decoded is OSDString ) {
+                return (OSDString) decoded.AsString();
+            } else if ( decoded is OSDInteger ) {
+                return (OSDInteger) decoded.AsInteger();
+            } else if ( decoded is OSDReal ) {
+                return (OSDReal) decoded.AsReal();
+            } else if ( decoded is OSDBoolean ) {
+                return decoded.AsBoolean();
+            } else if ( decoded is OSDMap ) {
+                return osdToHashtable((OSDMap) decoded);
+            } else if ( decoded is OSDArray ) {
+                return osdToArray((OSDArray) decoded);
+            } else {
+                throw new Exception("osParseJSONNew deserialized into unknown OSD type " + decoded.Type.ToString());
+            }
+            return new List<Object>();
+        }
+
+        public Object osParseJSONNew(string JSON)
+        {
+            CheckThreatLevel(ThreatLevel.None, "osParseJSON");
+
+            m_host.AddScriptLPS(1);
+
+            try
+            {
+                OSD decoded = OSDParser.DeserializeJson(JSON);
+                return osdToObject(decoded);
+            }
+            catch(Exception e)
+            {
+                OSSLError("osParseJSONNew: The JSON string is not valid " + JSON + " : " + e.Message) ;
+                return null;
+            }
+        }
+
         public Hashtable osParseJSON(string JSON)
         {
             CheckThreatLevel(ThreatLevel.None, "osParseJSON");
