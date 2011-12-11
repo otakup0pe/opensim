@@ -1572,6 +1572,8 @@ namespace OpenSim.Region.ScriptEngine.Shared.Api
 
         private Object osdToObject(OSD decoded)
         {
+            ILog m_log = LogManager.GetLogger(MethodBase.GetCurrentMethod().DeclaringType);
+            m_log.DebugFormat("osdToObject with a " + decoded.GetType().ToString() + " : " + decoded.AsString());
             if ( decoded is OSDString ) {
                 return (string) decoded.AsString();
             } else if ( decoded is OSDInteger ) {
@@ -1591,6 +1593,7 @@ namespace OpenSim.Region.ScriptEngine.Shared.Api
 
         public Object osParseJSONNew(string JSON)
         {
+            ILog m_log = LogManager.GetLogger(MethodBase.GetCurrentMethod().DeclaringType);
             CheckThreatLevel(ThreatLevel.None, "osParseJSON");
 
             m_host.AddScriptLPS(1);
