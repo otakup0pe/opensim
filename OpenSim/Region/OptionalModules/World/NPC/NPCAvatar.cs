@@ -43,7 +43,6 @@ namespace OpenSim.Region.OptionalModules.World.NPC
         private readonly UUID m_uuid = UUID.Random();
         private readonly Scene m_scene;
 
-
         public NPCAvatar(string firstname, string lastname, Vector3 position, Scene scene)
         {
             m_firstname = firstname;
@@ -56,6 +55,8 @@ namespace OpenSim.Region.OptionalModules.World.NPC
         {
             get { return m_scene; }
         }
+
+        public ISceneAgent SceneAgent { get { throw new NotImplementedException(); } }
 
         public void Say(string message)
         {
@@ -183,6 +184,7 @@ namespace OpenSim.Region.OptionalModules.World.NPC
         public event RequestMapName OnMapNameRequest;
         public event TeleportLocationRequest OnTeleportLocationRequest;
         public event TeleportLandmarkRequest OnTeleportLandmarkRequest;
+        public event TeleportCancel OnTeleportCancel;
         public event DisconnectUser OnDisconnectUser;
         public event RequestAvatarProperties OnRequestAvatarProperties;
         public event SetAlwaysRun OnSetAlwaysRun;
@@ -841,6 +843,8 @@ namespace OpenSim.Region.OptionalModules.World.NPC
 
         public void Start()
         {
+            // We never start the client, so always fail.
+            throw new NotImplementedException();
         }
         
         public void Stop()

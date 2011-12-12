@@ -140,6 +140,7 @@ namespace OpenSim.Region.ClientStack.LindenUDP
         public event RequestMapName OnMapNameRequest;
         public event TeleportLocationRequest OnTeleportLocationRequest;
         public event TeleportLandmarkRequest OnTeleportLandmarkRequest;
+        public event TeleportCancel OnTeleportCancel;
         public event DisconnectUser OnDisconnectUser;
         public event RequestAvatarProperties OnRequestAvatarProperties;
         public event SetAlwaysRun OnSetAlwaysRun;
@@ -379,6 +380,7 @@ namespace OpenSim.Region.ClientStack.LindenUDP
             set { m_startpos = value; }
         }
         public UUID AgentId { get { return m_agentId; } }
+        public ISceneAgent SceneAgent { get; private set; }
         public UUID ActiveGroupId { get { return m_activeGroupID; } }
         public string ActiveGroupName { get { return m_activeGroupName; } }
         public ulong ActiveGroupPowers { get { return m_activeGroupPowers; } }
@@ -508,6 +510,7 @@ namespace OpenSim.Region.ClientStack.LindenUDP
 
             // Remove ourselves from the scene
             m_scene.RemoveClient(AgentId, true);
+            SceneAgent = null;
 
             // We can't reach into other scenes and close the connection
             // We need to do this over grid communications
@@ -523,7 +526,7 @@ namespace OpenSim.Region.ClientStack.LindenUDP
 
         public void Kick(string message)
         {
-            if (!ChildAgentStatus())
+            if (!SceneAgent.IsChildAgent)
             {
                 KickUserPacket kupack = (KickUserPacket)PacketPool.Instance.GetPacket(PacketType.KickUser);
                 kupack.UserInfo.AgentID = AgentId;
@@ -687,7 +690,7 @@ namespace OpenSim.Region.ClientStack.LindenUDP
 
         public virtual void Start()
         {
-            m_scene.AddNewClient(this, PresenceType.User);
+            SceneAgent = m_scene.AddNewClient(this, PresenceType.User);
 
             RefreshGroupMembership();
         }
@@ -2446,7 +2449,7 @@ namespace OpenSim.Region.ClientStack.LindenUDP
         /// <param name="Message"></param>
         public void SendBlueBoxMessage(UUID FromAvatarID, String FromAvatarName, String Message)
         {
-            if (!ChildAgentStatus())
+            if (!SceneAgent.IsChildAgent)
                 SendInstantMessage(new GridInstantMessage(null, FromAvatarID, FromAvatarName, AgentId, 1, Message, false, new Vector3()));
 
             //SendInstantMessage(FromAvatarID, fromSessionID, Message, AgentId, SessionId, FromAvatarName, (byte)21,(uint) Util.UnixTimeSinceEpoch());
@@ -5052,14 +5055,6 @@ namespace OpenSim.Region.ClientStack.LindenUDP
             return 0;
         }
 
-        /// <summary>
-        /// This is a utility method used by single states to not duplicate kicks and blue card of death messages.
-        /// </summary>
-        public bool ChildAgentStatus()
-        {
-            return m_scene.PresenceChildStatus(AgentId);
-        }
-
         #endregion
 
         /// <summary>
@@ -5179,6 +5174,7 @@ namespace OpenSim.Region.ClientStack.LindenUDP
             AddLocalPacketHandler(PacketType.MapBlockRequest, HandleMapBlockRequest, false);
             AddLocalPacketHandler(PacketType.MapNameRequest, HandleMapNameRequest, false);
             AddLocalPacketHandler(PacketType.TeleportLandmarkRequest, HandleTeleportLandmarkRequest);
+            AddLocalPacketHandler(PacketType.TeleportCancel, HandleTeleportCancel);
             AddLocalPacketHandler(PacketType.TeleportLocationRequest, HandleTeleportLocationRequest);
             AddLocalPacketHandler(PacketType.UUIDNameRequest, HandleUUIDNameRequest, false);
             AddLocalPacketHandler(PacketType.RegionHandleRequest, HandleRegionHandleRequest);
@@ -8415,6 +8411,16 @@ namespace OpenSim.Region.ClientStack.LindenUDP
             return true;
         }
 
+        private bool HandleTeleportCancel(IClientAPI sender, Packet Pack)
+        {
+            TeleportCancel handlerTeleportCancel = OnTeleportCancel;
+            if (handlerTeleportCancel != null)
+            {
+                handlerTeleportCancel(this);
+            }
+            return true;
+        }
+
         private AssetBase FindAssetInUserAssetServer(string id)
         {
             AgentCircuitData aCircuit = ((Scene)Scene).AuthenticateHandler.GetAgentCircuitData(CircuitCode);
@@ -11621,7 +11627,9 @@ namespace OpenSim.Region.ClientStack.LindenUDP
                     logPacket = false;
 
                 if (logPacket)
-                    m_log.DebugFormat("[CLIENT]: Packet OUT {0} to {1}", packet.Type, Name);
+                    m_log.DebugFormat(
+                        "[CLIENT]: PACKET OUT to   {0} ({1}) in {2} - {3}",
+                        Name, SceneAgent.IsChildAgent ? "child" : "root ", m_scene.RegionInfo.RegionName, packet.Type);
             }
             
             m_udpServer.SendPacket(m_udpClient, packet, throttlePacketType, doAutomaticSplitting, method);
@@ -11664,19 +11672,21 @@ namespace OpenSim.Region.ClientStack.LindenUDP
         {
             if (DebugPacketLevel > 0)
             {
-                bool outputPacket = true;
+                bool logPacket = true;
 
                 if (DebugPacketLevel <= 255 && packet.Type == PacketType.AgentUpdate)
-                    outputPacket = false;
+                    logPacket = false;
 
                 if (DebugPacketLevel <= 200 && packet.Type == PacketType.RequestImage)
-                    outputPacket = false;
+                    logPacket = false;
 
                 if (DebugPacketLevel <= 100 && (packet.Type == PacketType.ViewerEffect || packet.Type == PacketType.AgentAnimation))
-                    outputPacket = false;
+                    logPacket = false;
 
-                if (outputPacket)
-                    m_log.DebugFormat("[CLIENT]: Packet IN {0} from {1}", packet.Type, Name);
+                if (logPacket)
+                    m_log.DebugFormat(
+                        "[CLIENT]: PACKET IN  from {0} ({1}) in {2} - {3}",
+                        Name, SceneAgent.IsChildAgent ? "child" : "root ", m_scene.RegionInfo.RegionName, packet.Type);
             }
 
             if (!ProcessPacketMethod(packet))

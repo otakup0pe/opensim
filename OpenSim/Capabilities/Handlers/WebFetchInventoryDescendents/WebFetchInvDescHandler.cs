@@ -42,7 +42,6 @@ using Caps = OpenSim.Framework.Capabilities.Caps;
 
 namespace OpenSim.Capabilities.Handlers
 {
-
     public class WebFetchInvDescHandler 
     {
         private static readonly ILog m_log =
@@ -50,7 +49,7 @@ namespace OpenSim.Capabilities.Handlers
 
         private IInventoryService m_InventoryService;
         private ILibraryService m_LibraryService;
-        private object m_fetchLock = new Object();
+//        private object m_fetchLock = new Object();
 
         public WebFetchInvDescHandler(IInventoryService invService, ILibraryService libService) 
         {
@@ -58,39 +57,42 @@ namespace OpenSim.Capabilities.Handlers
             m_LibraryService = libService;
         }
 
-        public string FetchInventoryDescendentsRequest(string request, string path, string param, OSHttpRequest httpRequest, OSHttpResponse httpResponse)
+        public string FetchInventoryDescendentsRequest(string request, string path, string param, IOSHttpRequest httpRequest, IOSHttpResponse httpResponse)
         {
-            // nasty temporary hack here, the linden client falsely
-            // identifies the uuid 00000000-0000-0000-0000-000000000000
-            // as a string which breaks us
-            //
-            // correctly mark it as a uuid
-            //
-            request = request.Replace("<string>00000000-0000-0000-0000-000000000000</string>", "<uuid>00000000-0000-0000-0000-000000000000</uuid>");
+//            lock (m_fetchLock)
+//            {
+//                m_log.DebugFormat("[WEB FETCH INV DESC HANDLER]: Received request {0}", request);
+    
+                // nasty temporary hack here, the linden client falsely
+                // identifies the uuid 00000000-0000-0000-0000-000000000000
+                // as a string which breaks us
+                //
+                // correctly mark it as a uuid
+                //
+                request = request.Replace("<string>00000000-0000-0000-0000-000000000000</string>", "<uuid>00000000-0000-0000-0000-000000000000</uuid>");
+    
+                // another hack <integer>1</integer> results in a
+                // System.ArgumentException: Object type System.Int32 cannot
+                // be converted to target type: System.Boolean
+                //
+                request = request.Replace("<key>fetch_folders</key><integer>0</integer>", "<key>fetch_folders</key><boolean>0</boolean>");
+                request = request.Replace("<key>fetch_folders</key><integer>1</integer>", "<key>fetch_folders</key><boolean>1</boolean>");
+    
+                Hashtable hash = new Hashtable();
+                try
+                {
+                    hash = (Hashtable)LLSD.LLSDDeserialize(Utils.StringToBytes(request));
+                }
+                catch (LLSD.LLSDParseException e)
+                {
+                    m_log.ErrorFormat("[WEB FETCH INV DESC HANDLER]: Fetch error: {0}{1}" + e.Message, e.StackTrace);
+                    m_log.Error("Request: " + request);
+                }
+    
+                ArrayList foldersrequested = (ArrayList)hash["folders"];
+    
+                string response = "";
 
-            // another hack <integer>1</integer> results in a
-            // System.ArgumentException: Object type System.Int32 cannot
-            // be converted to target type: System.Boolean
-            //
-            request = request.Replace("<key>fetch_folders</key><integer>0</integer>", "<key>fetch_folders</key><boolean>0</boolean>");
-            request = request.Replace("<key>fetch_folders</key><integer>1</integer>", "<key>fetch_folders</key><boolean>1</boolean>");
-
-            Hashtable hash = new Hashtable();
-            try
-            {
-                hash = (Hashtable)LLSD.LLSDDeserialize(Utils.StringToBytes(request));
-            }
-            catch (LLSD.LLSDParseException pe)
-            {
-                m_log.Error("[AGENT INVENTORY]: Fetch error: " + pe.Message);
-                m_log.Error("Request: " + request.ToString());
-            }
-
-            ArrayList foldersrequested = (ArrayList)hash["folders"];
-
-            string response = "";
-            lock (m_fetchLock)
-            {
                 for (int i = 0; i < foldersrequested.Count; i++)
                 {
                     string inventoryitemstr = "";
@@ -104,7 +106,7 @@ namespace OpenSim.Capabilities.Handlers
                     }
                     catch (Exception e)
                     {
-                        m_log.Debug("[CAPS]: caught exception doing OSD deserialize" + e);
+                        m_log.Debug("[WEB FETCH INV DESC HANDLER]: caught exception doing OSD deserialize" + e);
                     }
                     LLSDInventoryDescendents reply = FetchInventoryReply(llsdRequest);
 
@@ -114,7 +116,6 @@ namespace OpenSim.Capabilities.Handlers
 
                     response += inventoryitemstr;
                 }
-
 
                 if (response.Length == 0)
                 {
@@ -129,11 +130,12 @@ namespace OpenSim.Capabilities.Handlers
                     response = "<llsd><map><key>folders</key><array>" + response + "</array></map></llsd>";
                 }
 
-                //m_log.DebugFormat("[CAPS]: Replying to CAPS fetch inventory request with following xml");
-                //m_log.Debug("[CAPS] "+response);
+//                m_log.DebugFormat("[WEB FETCH INV DESC HANDLER]: Replying to CAPS fetch inventory request");
+                //m_log.Debug("[WEB FETCH INV DESC HANDLER] "+response);
 
-            }
-            return response;
+                return response;
+
+//            }
         }
 
         /// <summary>
@@ -155,7 +157,10 @@ namespace OpenSim.Capabilities.Handlers
             inv.Items = new List<InventoryItemBase>();
             int version = 0;
 
-            inv = Fetch(invFetch.owner_id, invFetch.folder_id, invFetch.owner_id, invFetch.fetch_folders, invFetch.fetch_items, invFetch.sort_order, out version);
+            inv
+                = Fetch(
+                    invFetch.owner_id, invFetch.folder_id, invFetch.owner_id,
+                    invFetch.fetch_folders, invFetch.fetch_items, invFetch.sort_order, out version);
 
             if (inv.Folders != null)
             {
@@ -176,19 +181,43 @@ namespace OpenSim.Capabilities.Handlers
             contents.descendents = contents.items.Array.Count + contents.categories.Array.Count;
             contents.version = version;
 
+//            m_log.DebugFormat(
+//                "[WEB FETCH INV DESC HANDLER]: Replying to request for folder {0} (fetch items {1}, fetch folders {2}) with {3} items and {4} folders for agent {5}",
+//                invFetch.folder_id,
+//                invFetch.fetch_items,
+//                invFetch.fetch_folders,
+//                contents.items.Array.Count,
+//                contents.categories.Array.Count,
+//                invFetch.owner_id);
+
             return reply;
         }
 
-        public InventoryCollection Fetch(UUID agentID, UUID folderID, UUID ownerID,
-                                            bool fetchFolders, bool fetchItems, int sortOrder, out int version)
+        /// <summary>
+        /// Handle the caps inventory descendents fetch.
+        /// </summary>
+        /// <param name="agentID"></param>
+        /// <param name="folderID"></param>
+        /// <param name="ownerID"></param>
+        /// <param name="fetchFolders"></param>
+        /// <param name="fetchItems"></param>
+        /// <param name="sortOrder"></param>
+        /// <param name="version"></param>
+        /// <returns>An empty InventoryCollection if the inventory look up failed</returns>
+        private InventoryCollection Fetch(
+            UUID agentID, UUID folderID, UUID ownerID,
+            bool fetchFolders, bool fetchItems, int sortOrder, out int version)
         {
-            m_log.DebugFormat(
-                "[WEBFETCHINVENTORYDESCENDANTS]: Fetching folders ({0}), items ({1}) from {2} for agent {3}",
-                fetchFolders, fetchItems, folderID, agentID);
+//            m_log.DebugFormat(
+//                "[WEB FETCH INV DESC HANDLER]: Fetching folders ({0}), items ({1}) from {2} for agent {3}",
+//                fetchFolders, fetchItems, folderID, agentID);
+
+            // FIXME MAYBE: We're not handling sortOrder!
 
             version = 0;
             InventoryFolderImpl fold;
             if (m_LibraryService != null && m_LibraryService.LibraryRootFolder != null && agentID == m_LibraryService.LibraryRootFolder.Owner)
+            {
                 if ((fold = m_LibraryService.LibraryRootFolder.FindFolder(folderID)) != null)
                 {
                     InventoryCollection ret = new InventoryCollection();
@@ -197,6 +226,7 @@ namespace OpenSim.Capabilities.Handlers
 
                     return ret;
                 }
+            }
 
             InventoryCollection contents = new InventoryCollection();
 
@@ -207,12 +237,86 @@ namespace OpenSim.Capabilities.Handlers
                 containingFolder.ID = folderID;
                 containingFolder.Owner = agentID;
                 containingFolder = m_InventoryService.GetFolder(containingFolder);
+
                 if (containingFolder != null)
+                {
                     version = containingFolder.Version;
+
+                    if (fetchItems)
+                    {
+                        /*
+                        List<InventoryItemBase> linkedItemsToAdd = new List<InventoryItemBase>();
+
+                        foreach (InventoryItemBase item in contents.Items)
+                        {
+                            if (item.AssetType == (int)AssetType.Link)
+                            {
+                                InventoryItemBase linkedItem = m_InventoryService.GetItem(new InventoryItemBase(item.AssetID));
+
+                                // Take care of genuinely broken links where the target doesn't exist
+                                // HACK: Also, don't follow up links that just point to other links.  In theory this is legitimate,
+                                // but no viewer has been observed to set these up and this is the lazy way of avoiding cycles
+                                // rather than having to keep track of every folder requested in the recursion.
+                                if (linkedItem != null && linkedItem.AssetType != (int)AssetType.Link && linkedItem.AssetType == (int)AssetType.Object)
+                                    linkedItemsToAdd.Add(linkedItem);
+                            }
+                        }
+
+                        foreach (InventoryItemBase linkedItem in linkedItemsToAdd)
+                        {
+                            m_log.DebugFormat(
+                                "[WEB FETCH INV DESC HANDLER]: Inserted linked item {0} for link in folder {1} for agent {2}",
+                                linkedItem.Name, folderID, agentID);
+
+                            contents.Items.Insert(0, linkedItem);
+                        }
+                        */
+
+                        /*
+                        // If the folder requested contains links, then we need to send those folders first, otherwise the links
+                        // will be broken in the viewer.
+                        HashSet<UUID> linkedItemFolderIdsToSend = new HashSet<UUID>();
+                        foreach (InventoryItemBase item in contents.Items)
+                        {
+                            if (item.AssetType == (int)AssetType.Link)
+                            {
+                                InventoryItemBase linkedItem = m_InventoryService.GetItem(new InventoryItemBase(item.AssetID));
+
+                                // Take care of genuinely broken links where the target doesn't exist
+                                // HACK: Also, don't follow up links that just point to other links.  In theory this is legitimate,
+                                // but no viewer has been observed to set these up and this is the lazy way of avoiding cycles
+                                // rather than having to keep track of every folder requested in the recursion.
+                                if (linkedItem != null && linkedItem.AssetType != (int)AssetType.Link)
+                                {
+                                    // We don't need to send the folder if source and destination of the link are in the same
+                                    // folder.
+                                    if (linkedItem.Folder != containingFolder.ID)
+                                        linkedItemFolderIdsToSend.Add(linkedItem.Folder);
+                                }
+                            }
+                        }
+    
+                        foreach (UUID linkedItemFolderId in linkedItemFolderIdsToSend)
+                        {
+                            m_log.DebugFormat(
+                                "[WEB FETCH INV DESC HANDLER]: Recursively fetching folder {0} linked by item in folder {1} for agent {2}",
+                                linkedItemFolderId, folderID, agentID);
+
+                            int dummyVersion;
+                            InventoryCollection linkedCollection
+                                = Fetch(
+                                    agentID, linkedItemFolderId, ownerID, fetchFolders, fetchItems, sortOrder, out dummyVersion);
+
+                            contents.Folders.AddRange(linkedCollection.Folders);
+                            contents.Items.AddRange(linkedCollection.Items);
+                        }
+                        */
+                    }
+                }
             }
             else
             {
-                // Lost itemsm don't really need a version
+                // Lost items don't really need a version
                 version = 1;
             }
 
@@ -230,10 +334,11 @@ namespace OpenSim.Capabilities.Handlers
             llsdFolder.folder_id = invFolder.ID;
             llsdFolder.parent_id = invFolder.ParentID;
             llsdFolder.name = invFolder.Name;
-            if (invFolder.Type < 0 || invFolder.Type >= TaskInventoryItem.Types.Length)
+
+            if (invFolder.Type == (short)AssetType.Unknown || !Enum.IsDefined(typeof(AssetType), (sbyte)invFolder.Type))
                 llsdFolder.type = "-1";
             else
-                llsdFolder.type = TaskInventoryItem.Types[invFolder.Type];
+                llsdFolder.type = Utils.AssetTypeToString((AssetType)invFolder.Type);
             llsdFolder.preferred_type = "-1";
 
             return llsdFolder;
@@ -254,16 +359,19 @@ namespace OpenSim.Capabilities.Handlers
             llsdItem.item_id = invItem.ID;
             llsdItem.name = invItem.Name;
             llsdItem.parent_id = invItem.Folder;
+
             try
             {
-                // TODO reevaluate after upgrade to libomv >= r2566. Probably should use UtilsConversions.
-                llsdItem.type = TaskInventoryItem.Types[invItem.AssetType];
-                llsdItem.inv_type = TaskInventoryItem.InvTypes[invItem.InvType];
+                llsdItem.type = Utils.AssetTypeToString((AssetType)invItem.AssetType);
+                llsdItem.inv_type = Utils.InventoryTypeToString((InventoryType)invItem.InvType);
             }
             catch (Exception e)
             {
-                m_log.ErrorFormat("[CAPS]: Problem setting asset {0} inventory {1} types while converting inventory item {2}: {3}", invItem.AssetType, invItem.InvType, invItem.Name, e.Message);
+                m_log.ErrorFormat(
+                    "[WEB FETCH INV DESC HANDLER]: Problem setting asset {0} inventory {1} types while converting inventory item {2}: {3}",
+                    invItem.AssetType, invItem.InvType, invItem.Name, e.Message);
             }
+
             llsdItem.permissions = new LLSDPermissions();
             llsdItem.permissions.creator_id = invItem.CreatorIdAsUuid;
             llsdItem.permissions.base_mask = (int)invItem.CurrentPermissions;
@@ -294,6 +402,5 @@ namespace OpenSim.Capabilities.Handlers
 
             return llsdItem;
         }
-
     }
 }

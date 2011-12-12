@@ -84,6 +84,8 @@ namespace OpenSim.Framework
     public delegate void TeleportLandmarkRequest(
         IClientAPI remoteClient, AssetLandmark lm);
 
+    public delegate void TeleportCancel(IClientAPI remoteClient);
+
     public delegate void DisconnectUser();
 
     public delegate void RequestAvatarProperties(IClientAPI remoteClient, UUID avatarID);
@@ -702,6 +704,12 @@ namespace OpenSim.Framework
 
         UUID AgentId { get; }
 
+        /// <summary>
+        /// The scene agent for this client.  This will only be set if the client has an agent in a scene (i.e. if it
+        /// is connected).
+        /// </summary>
+        ISceneAgent SceneAgent { get; }
+
         UUID SessionId { get; }
 
         UUID SecureSessionId { get; }
@@ -782,6 +790,7 @@ namespace OpenSim.Framework
         event RequestAvatarProperties OnRequestAvatarProperties;
         event SetAlwaysRun OnSetAlwaysRun;
         event TeleportLandmarkRequest OnTeleportLandmarkRequest;
+        event TeleportCancel OnTeleportCancel;
         event DeRezObject OnDeRezObject;
         event Action<IClientAPI> OnRegionHandShakeReply;
         event GenericCall1 OnRequestWearables;
